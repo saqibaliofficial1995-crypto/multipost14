@@ -6,7 +6,7 @@ Includes channel inspection, metadata retrieval, and resumable uploads with safe
 import time
 from typing import Any, Dict
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from googleapiclient.errors import HttpError, ResumableUploadError
 from googleapiclient.http import MediaFileUpload
 
 
@@ -85,22 +85,41 @@ def upload_video(
 
     response = None
     retry_count = 0
-    while response is None:
-        try:
-            status, response = request.next_chunk()
-            if status:
-                progress = int(status.progress() * 100)
-                print(f"[upload] Upload progress: {progress}%")
-        except HttpError as e:
-            if e.resp.status in [500, 502, 503, 504]:
-                retry_count += 1
-                if retry_count > 5:
+    try:
+        while response is None:
+            try:
+                status, response = request.next_chunk()
+                if status:
+                    progress = int(status.progress() * 100)
+                    print(f"[upload] Upload progress: {progress}%")
+            except HttpError as e:
+                if e.resp.status in [500, 502, 503, 504]:
+                    retry_count += 1
+                    if retry_count > 5:
+                        raise
+                    wait_time = 2 ** retry_count
+                    print(f"[upload] Retrying upload after HTTP {e.resp.status} (attempt {retry_count}). Waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
                     raise
-                wait_time = 2 ** retry_count
-                print(f"[upload] Retrying upload after HTTP {e.resp.status} (attempt {retry_count}). Waiting {wait_time}s...")
-                time.sleep(wait_time)
-            else:
-                raise
+    except ResumableUploadError as rue:
+        if (hasattr(rue, "resp") and rue.resp.status == 409) or "alreadyExists" in str(rue):
+            print("[upload] Notice: 409 alreadyExists encountered. Verifying upload via playlist...")
+            ch_info = get_channel_info(service)
+            uploads_id = ch_info.get("uploads_playlist")
+            if uploads_id:
+                plist = service.playlistItems().list(
+                    playlistId=uploads_id,
+                    part="snippet",
+                    maxResults=5,
+                ).execute()
+                for p_item in plist.get("items", []):
+                    p_snippet = p_item.get("snippet", {})
+                    if p_snippet.get("title") == metadata.get("title"):
+                        vid_id = p_snippet.get("resourceId", {}).get("videoId")
+                        print(f"[upload] Confirmed video was uploaded successfully: {vid_id}")
+                        return {"id": vid_id, "snippet": p_snippet}
+        raise
 
     video_id = response.get("id")
     print(f"[upload] Video published successfully. Video ID: {video_id}")
