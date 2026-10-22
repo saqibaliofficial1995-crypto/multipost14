@@ -1,0 +1,64 @@
+name: Comment Reply Pipeline
+
+on:
+  schedule:
+    - cron: '30 6,18 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Simulate without posting replies'
+        type: boolean
+        default: false
+
+concurrency:
+  group: multipost14-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-auth google-auth-oauthlib google-api-python-client requests
+
+      - name: Run Comment Reply Module
+        run: |
+          DRY_RUN_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
+          python -m src.comment_reply $DRY_RUN_FLAG
+
+      - name: Commit Updated State
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git config user.name "gasulohallni-glitch"
+          git config user.email "gasulohallni@gmail.com"
+          git add state/replied.json
+          if git diff --staged --quiet; then
+            echo "No replied state changes to commit."
+          else
+            git commit -m "Update replied state [skip ci]"
+            git push
+          fi

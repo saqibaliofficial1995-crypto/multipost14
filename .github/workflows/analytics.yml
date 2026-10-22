@@ -1,0 +1,42 @@
+name: Analytics Sync
+
+on:
+  schedule:
+    - cron: '30 16 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: multipost14-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  analytics-sync:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-auth google-auth-oauthlib google-api-python-client requests
+
+      - name: Run Analytics Sync
+        run: |
+          python -m src.analytics

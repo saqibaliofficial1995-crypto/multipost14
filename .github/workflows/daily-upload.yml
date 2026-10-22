@@ -1,0 +1,75 @@
+name: Daily Upload Pipeline
+
+on:
+  schedule:
+    - cron: '30 3,9,15 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Simulate without uploading'
+        type: boolean
+        default: false
+      max_uploads:
+        description: 'Max videos to upload'
+        type: number
+        default: 1
+
+concurrency:
+  group: multipost14-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up FFmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-auth google-auth-oauthlib google-api-python-client requests
+
+      - name: Run Upload Orchestrator
+        run: |
+          DRY_RUN_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
+          MAX_UPLOADS="${{ github.event.inputs.max_uploads }}"
+          if [ -z "$MAX_UPLOADS" ]; then
+            MAX_UPLOADS="1"
+          fi
+          python -m src.ci_run $DRY_RUN_FLAG --max-uploads "$MAX_UPLOADS"
+
+      - name: Commit Updated State
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git config user.name "gasulohallni-glitch"
+          git config user.email "gasulohallni@gmail.com"
+          git add state/uploaded.json
+          if git diff --staged --quiet; then
+            echo "No state changes to commit."
+          else
+            git commit -m "Update uploaded state [skip ci]"
+            git push
+          fi
