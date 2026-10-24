@@ -106,7 +106,7 @@ def upload_video(
         if (hasattr(rue, "resp") and rue.resp.status == 409) or "alreadyExists" in str(rue):
             print("[upload] Notice: 409 alreadyExists encountered. Verifying upload via playlist...")
             ch_info = get_channel_info(service)
-            uploads_id = ch_info.get("uploads_playlist")
+            uploads_id = ch_info.get("uploads_playlist") or "UUJ0js82wuRv_Txd2DTPV6TQ"
             if uploads_id:
                 plist = service.playlistItems().list(
                     playlistId=uploads_id,
