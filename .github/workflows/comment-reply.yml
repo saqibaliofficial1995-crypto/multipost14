@@ -53,8 +53,8 @@ jobs:
       - name: Commit Updated State
         if: github.event.inputs.dry_run != 'true'
         run: |
-          git config user.name "gasulohallni-glitch"
-          git config user.email "gasulohallni@gmail.com"
+          git config user.name "saqibaliofficial1995-crypto"
+          git config user.email "saqibaliofficial1995@gmail.com"
           git add state/replied.json
           if git diff --staged --quiet; then
             echo "No replied state changes to commit."
